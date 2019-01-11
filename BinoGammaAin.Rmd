@@ -226,7 +226,7 @@ save(fit0, fit1, file = "fitsPrintemps.RData")
 load(file="fitsPrintemps.RData")
 ```
  
- On constate  pour chaque situation (pluie nulle à la figure 1 ou positive à la figure 2) que les paramètres de $\pi_t$ ($a$ et $b$) d'une part et de $\alpha_t$ d'autre part ($g$ et $c$) sont a posteriori très correlés, tandis qu'on observe pas de liaison entre les paramètres de $\pi_t$, ceux de $\alpha_t$, et le $\gamma$. En situation de pluie, on retrouve une valeur de $\gamma$ proche de $1$ donc un modèle d'occurrence de type *loi exponentielle*.
+ On constate  pour chaque situation (pluie nulle à la figure 1 ou positive à la figure 2) que les paramètres de $\pi_t$ ($a$ et $b$) d'une part et de $\alpha_t$ d'autre part ($g$ et $c$) sont a posteriori très correlés, tandis qu'on observe pas de liaison entre les paramètres de $\pi_t$, ceux de $\alpha_t$, et le $\gamma$. En situation de pluie, on retrouve une valeur de $\gamma$ proche de $1$ donc un modèle d'occurrence de type *loi exponentielle* pour les quantités de pluie (voir tableaux 1 et 2).
  
 ### Inférence sur la situation sèche
  
@@ -262,7 +262,7 @@ knitr::kable( IC90fit1,caption = "Statistiques a posteriori des paramètres en s
 ```
 
 ### Inférence préquentielle
-On modèlise la loi marginale de l'ensemble sous la forme d'un mélange des deux situations ($Z=1$ situation humide, $Z=0$ situation anticipée sèche) où chaque composante suit la *prédictive* de la Bino-Gamma échangeable inférée précédemment. Ce calcul peut se faire sur toute la base (calage+validation) en prévision des opérations futures
+On modèlise la loi marginale de l'ensemble sous la forme d'un mélange des deux situations ($Z=1$ situation humide, $Z=0$ situation anticipée sèche) où chaque composante suit la *prédictive* de la Bino-Gamma échangeable inférée précédemment. Ce calcul va se faire sur toute la base (calage+validation) en prévision des opérations futures
 
 ```{r predictivecomposeche,results = 'hide', message = FALSE, warning = FALSE}
 d<-dtout
@@ -309,9 +309,10 @@ repeat {
   }
   ro <- ronew
 }
+freqYpos<-sum(d$Obs>seuil)/length(d$Obs)
 ```
 
-On trouve $\rho$= `r ro`, une valeur très proche de la proportion empirique `r sum(d$Obs>seuil)/length(d$Obs)`.
+On trouve $\rho$= `r ro`, une valeur très proche de la proportion empirique `r freqYpos`.
 
 Selon les préceptes de Krzysztofowicz, calculons les probabilités $[Z\vert y]$ lorsque la situation $Z$ est issue de ce modèle *boite noire* (sur l'échantillon de calage *d*).
 
@@ -341,8 +342,18 @@ ycondz=zy/matrix(c((zy[1,1]+zy[1,2]),(zy[2,1]+zy[2,2]),
 knitr::kable(ycondz, caption = "Probabilités conditionnelles y sachant z d'après la machinerie recalant le modèle préquentiel considéré comme une boite noire")
 ```
 
+Mais pour Krzysztofowicz, c'est définir $[z\vert y]$ que permettent ces opérations puisque chacune des expériences enregistrées dans la base d'apprentissage correspond à un *état de la nature* $Y$ fixé à sa valeur $y$ et que nos élucabrations ont pour effet de lui associer un tirage de $Z$. 
+
+```{r printyzcond, results='asis', message = FALSE, warning = FALSE}
+zcondy=zy/matrix(c((zy[1,1]+zy[2,1]),(zy[2,1]+zy[1,1]),
+                  (zy[2,2]+zy[1,2]),(zy[1,2]+zy[2,2])),2,2)
+knitr::kable(zcondy, caption = "Probabilités conditionnelles z sachant y d'après la machinerie recalant le modèle préquentiel considéré comme une boite noire")
+```
+
+
 ## Prédictive pour $y=1$ ou $y=0$ sachant l'ensemble
-Il faut adopter la climatologie, c'est à dire la valeur de la probabilité marginale $[Y=1]$. Ceci doit faire l'objet d'une discussion car on dispose d'une base historique.
+Il faut adopter *une* climatologie, c'est à dire la valeur de la probabilité marginale $[Y=1]$. Je vais prendre au plus simple $[Y=1]$=`r freqYpos` (la fréquence empirique de pluies non nulles pour la période sur la base de calage).  Ceci doit faire l'objet d'une discussion car on dispose d'une base historique qui permet une étude plus complète de la climatologie, du moins en principe.
+
 
 
 ## Validation des situations sèche ou humide
@@ -371,4 +382,4 @@ Je me trouve finalement plutôt satisfait des résultats, malgré le nombre de d
 
 * Cette amélioration provient d'un gain en fiabilité, même si on perd en terme de résolution. 
 
-Reste maintenant à passer à la prévision de la quantité de pluie, ce qui fera l'objet d'une autre note. Le modèle des fuites échangeable est également à envisager.
+Reste maintenant à passer à la prévision de la quantité de pluie, ce qui fera l'objet d'une autre note. Le modèle des fuites échangeable est également à mettre en oeuvre.
