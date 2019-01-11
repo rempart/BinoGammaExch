@@ -1,7 +1,7 @@
 ---
 title: "Essais  de la mise en oeuvre du Bayesian Forecasting System sur un modèle Bernoulli-Gamma échangeable d'ensemble de membres de pluies"
 author: "Eric Parent"
-date: "9 janvier partie 1 : Prévision binaire sur Vouglans"
+date: "11 janvier partie 1 : Prévision binaire sur Vouglans"
 fontsize: 9pt
 includes:
       in_header: stylepandoc.tex
@@ -14,11 +14,11 @@ output:
 
 # Avertissement
 
-Ce document est issu de mes nombreuses discussions avec Jacques Bernier, ainsi que de nos échanges épistolaires de notes, d'études et de
+Ce document reprends une de mes nombreuses discussions avec Jacques Bernier, ainsi que de nos échanges épistolaires de notes, d'études et de
 contre-études depuis que je me suis engagé sur les prévisions
 d'ensemble. 
 
-* Je reprends le modèle Binomial-Gamma sur les pluies de Vouglans et le modèle Binomial-Gamma échangeable pour les membres de l'ensemble du CEP. 
+* J'explore le modèle Binomial-Gamma sur les pluies de Vouglans et le modèle Binomial-Gamma échangeable pour les membres de l'ensemble du CEP. 
 
 * Pour prévoir le caractère sec vs humide, j'utilise les concepts développés par Roman
 Krzysztofowicz depuis de nombreuses années dans le domaine de la prévision, et notamment la prévision d'ensemble : la modélisation de la loi marginale de l'ensemble $X$  est utilisée comme un code boite noire pour créer une variable $Z$ que l'on cherche ensuite à relier à l'observation $Y$. 
@@ -30,7 +30,7 @@ Krzysztofowicz depuis de nombreuses années dans le domaine de la prévision, et
 * Les premiers résultats semblent positifs en terme de prévision du caractère binaire: sec ou humide. On abordera ultérieurement le problème de la prévision de la quantité de pluie (grâce à la NQT), quand pluie il y a.
  
 ```{r setup, results = 'hide', message = FALSE, warning = FALSE}
-# Ne pas oublier d'indiquer le chemin du répertoire de travail
+# Ne pas oublier de positionner Rstudio sur le chemin du répertoire de travail
 rm(list=ls())
 library(rstan)
 rstan_options(auto_write = TRUE)
@@ -51,7 +51,7 @@ base<-function(t){
 }
 
 ```
-J'ai choisi un seuil de `r seuil`, un horizon de `r horizon` jours et la période du printemps pour être en accord avec les essais récents de Jacques. Dans
+J'ai choisi un seuil de `r seuil` mm, un horizon de `r horizon` jours et la période du printemps pour être en accord avec les essais récents de Jacques. Dans
 ce document et les programmes associés, nous illustrons les idées en
 travaillant avec les données de pluies journalières à la station de
 Vouglans fournies par EDF \footnote{Les données d'HydroQuébec sont
@@ -147,11 +147,11 @@ La log-probabilité de l' ensemble à la date $t$ s'écrit:
 $${L_t} = N{X_t}\log ({\pi _t}) + (K - N{X_t})\log (1 - {\pi _t}) - N{X_t}\log (\Gamma ({\gamma _t})) + {\gamma _t}N{X_t}\log {\alpha _t} + ({\gamma _t} - 1)SL{X_t}$$
 On va utiliser STAN pour réaliser l'inférence de ce type de modèle avec pour effet aléatoire:
 
-* la variable latente $\pi$ distribué comme une loi beta de paramètres $a$ et $b$
+* la variable latente $\pi_t$ distribué comme une loi beta de paramètres $a$ et $b$
 
-* la variable latente $\alpha$ distribué comme une loi gamma de paramètres $g$ et $c$
+* la variable latente $\alpha_t$ distribué comme une loi gamma de paramètres $g$ et $c$
 
-* la variable latente $\gamma$ distribué comme une loi de Dirac ( donc pas d'effet aléatoire on supprime cette variable latente, qui passe au statut de paramètre)
+* la variable latente $\gamma_t$ est choisie distribué comme une loi de Dirac ( donc pas d'effet aléatoire on supprime cette variable latente, qui passe au statut de paramètre $\gamma$ )
 
 et des lois uniformes vagues pour les paramètres $a,b,g,c,\gamma$ notés respectivement *a_NX*, *b_NX*, *g_alpha_SX*, *c_alpha_SX* et *gamma_SX* dans le programme informatique.
 
@@ -201,7 +201,7 @@ alpha_SX[t], gamma_SX);
 ```
 
 On va créer successivement un fichier d'apprentissage
-*d* pour la situation de pluie nulle puis pour celle de pluie positive. Sur chaque jeu, on ajuste une loi bino-gamma échangeable dont on stocke la loi a posteriori des paramètres dans le fichier  *fitsPrintemps.RData*.
+*d* pour la situation de pluie nulle puis pour celle de pluie positive. Sur chaque jeu, on ajuste une loi bino-gamma échangeable dont on stocke la loi a posteriori des paramètres dans le fichier  *fitsPrintemps.RData*. Je vais souvent noter dans la suite *d* pour la **datatable** de travail.
 
 ```{r fitstan, include=TRUE}
 if(!file.exists("fitsPrintemps.RData")){
@@ -226,7 +226,7 @@ save(fit0, fit1, file = "fitsPrintemps.RData")
 load(file="fitsPrintemps.RData")
 ```
  
- On constate  pour chaque situation (pluie nulle à la figure 1 ou positive à la figure 2) que les paramètres de $\pi_t$ ($a$ et $b$) d'une part et de $\alpha_t$ d'autre part ($g$ et $c$) sont a posteriori très correlés, tandis qu'on observe pas de liaison entre les paramètres de $\pi_t$, ceux de $\alpha_t$, et le $\gamma$. En situation de pluie, on retrouve une valeur de $\gamma$ proche de $1$ donc un modèle d'occurrence de type *loi exponentielle* pour les quantités de pluie (voir tableaux 1 et 2).
+ Pour chaque situation (pluie nulle à la figure 1 ou positive à la figure 2), on constate que les paramètres de $\pi_t$ ($a$ et $b$) d'une part et de $\alpha_t$ d'autre part ($g$ et $c$) sont a posteriori très correlés, tandis que l'on observe pas de liaison entre les paramètres de $\pi_t$, ceux de $\alpha_t$, et le $\gamma$. En situation de pluie, on retrouve une valeur de $\gamma$ proche de $1$ donc un modèle d'occurrence de type *loi exponentielle* pour les quantités de pluie prévue (voir tableaux 1 et 2).
  
 ### Inférence sur la situation sèche
  
@@ -342,7 +342,7 @@ ycondz=zy/matrix(c((zy[1,1]+zy[1,2]),(zy[2,1]+zy[2,2]),
 knitr::kable(ycondz, caption = "Probabilités conditionnelles y sachant z d'après la machinerie recalant le modèle préquentiel considéré comme une boite noire")
 ```
 
-Mais pour Krzysztofowicz, c'est définir $[z\vert y]$ que permettent ces opérations puisque chacune des expériences enregistrées dans la base d'apprentissage correspond à un *état de la nature* $Y$ fixé à sa valeur $y$ et que nos élucabrations ont pour effet de lui associer un tirage de $Z$. 
+Mais pour Krzysztofowicz, c'est essentiellement définir $[z\vert y]$ (cf Tableau 5) que permettent ces opérations puisque chacune des expériences enregistrées dans la base d'apprentissage correspond à un *état de la nature* $Y$ fixé à sa valeur $y$ et que nos élucabrations ont pour effet de lui associer un tirage de $Z$. 
 
 ```{r printyzcond, results='asis', message = FALSE, warning = FALSE}
 zcondy=zy/matrix(c((zy[1,1]+zy[2,1]),(zy[2,1]+zy[1,1]),
@@ -352,11 +352,54 @@ knitr::kable(zcondy, caption = "Probabilités conditionnelles z sachant y d'apr�
 
 
 ## Prédictive pour $y=1$ ou $y=0$ sachant l'ensemble
-Il faut adopter *une* climatologie, c'est à dire la valeur de la probabilité marginale $[Y=1]$. Je vais prendre au plus simple $[Y=1]$=`r freqYpos` (la fréquence empirique de pluies non nulles pour la période sur la base de calage).  Ceci doit faire l'objet d'une discussion car on dispose d'une base historique qui permet une étude plus complète de la climatologie, du moins en principe.
+Il faut adopter *une* climatologie, c'est à dire la valeur de la probabilité marginale $[Y=1]$. Je vais prendre au plus simple $[Y=1]$=`r freqYpos` (la fréquence empirique de pluies non nulles pour la période sur la base de calage).  Ce choix arbitraire doit faire l'objet d'une discussion car on dispose d'une base historique qui permet une étude plus complète de la climatologie, du moins en principe (voir notre papier en projet sur les idées fausses en prévision d'ensemble).
 
+On applique ensuite le *Bayesian processor of information* de Krzysztofowicz:
+\[
+\lbrack Y|X]=\int_{z}\left(  \frac{[Z|Y][Y]}{\int_{y}[Z|Y][Y]dY}\right)
+[Z|X]dZ
+\]
+Le programme ci-après calcule chacun des termes de l'équation pour toute la base de données *dtout* considérée (calibrage+validation):
+```{r calculepredictive, results = 'hide', message = FALSE, warning = FALSE}
+dtout$margey<-freqYpos
+dtout$probazeq1 <- ro*exp(dtout$LogProb1)/(ro*exp(dtout$LogProb1)+ (1-ro)*exp(dtout$LogProb0))
+dtout$probayeq1sachantzeq1<-(probazeg1sachantyeg1*dtout$margey)/ (probazeg1sachantyeg1*dtout$margey + probazeg1sachantyeg0*(1-dtout$margey))
+dtout$probayeq1sachantzeq0<-((1-probazeg1sachantyeg1)*dtout$margey)/ ((1-probazeg1sachantyeg1)*dtout$margey+ (1-probazeg1sachantyeg0)*(1-dtout$margey))
+dtout$predictyeg1<-dtout$probayeq1sachantzeq1*dtout$probazeq1 + dtout$probayeq1sachantzeq0*(1-dtout$probazeq1)
+```
 
 
 ## Validation des situations sèche ou humide
+
+On choisit pour période de validation la période posterieure au `r datecharniere` (la base de données de validation s'appelle *d* dans les programmes ci-après). La figure 3 montre le comportement du prédicteur bayésien ainsi construit.
+
+```{r validation0, fig.cap="Prédictive bayésienne de Y=1 (En rouge: Yobs=1)"}
+dtout %>% filter(Date>=datecharniere)->d
+plot(d$predictyeg1,d$NX/K, col=1+(d$Obs>=seuil),pch=19, xlab="Proportion de membres nuls", ylab="Probabilité predictive  y=1")
+
+```
+
+
+Sur l'échantillon de validation, le CRPS de la prédictive vaut `r mean((d$predictyeg1-(d$Obs>seuil))^2)` tandis que celui de la fréquence empirique des membres non nuls vaut `r mean((d$NX/K-(d$Obs>seuil))^2)` .
+
+En appellant le package **verification**, on peut visualiser la performance de la prédictive ainsi calculée (Figure 4):
+  
+```{r validation1,fig.cap="Graphe de performance de la prédictive bayésienne", message = FALSE, warning = FALSE}
+library(verification)
+verif<-verify(obs = 1*(d$Obs>seuil), pred=d$predictyeg1, obs.type = "binary",pred.type='prob')
+plot(verif)
+```
+ 
+ Elle a un peu meilleure allure que celle fondée sur la fréquence des membres non nuls donnée à la figure 5). 
+
+ 
+```{r validation2,fig.cap="Graphe de performance de la prédictive fondée sur la fréquence des membres non nuls" , message = FALSE, warning = FALSE}
+library(verification)
+verifNX<-verify(obs = 1*(d$Obs>seuil), pred=d$NX/K, obs.type = "binary",pred.type='prob')
+plot(verifNX)
+```
+ 
+En particulier la composante de fiabilité de son score vaut `r verif$bs.reliability` tandis qu'elle vaut `r verifNX$bs.reliability` pour l'estimateur naif. Mais on en paye le prix en terme de résolution :`r verif$bs.resolution` au lieu de `r verifNX$bs.resolution`
 
 # Conclusions
 
@@ -370,15 +413,17 @@ Si j'essaye de résumer opérationnellement les concepts de Krzysztofowicz, je d
 
 * produire la predictive \[[y\left| {X]} \right. = \int\limits_{\hat y}^{} {\left( {\frac{{[\hat y\left| {y][y]} \right.}}{{\left( {\int {[\hat y\left| {y][y]} \right.dy} } \right)}}} \right)}  \times [\hat y\left| {X]} \right.d\hat y\]
 
-J'essaie de respecter les principes du *tidyverse* mais je ne progresse que très lentement en programmation R.
+Je suis également embêté par la façon brutale d'évaluer le $\rho$ du mélange de la loi de $(NX,SX,SLX)$ sans incertitude
+
+J'ai essayé de respecter les principes du *tidyverse* mais je ne progresse que très lentement en programmation R et je bredouille beaucoup avec *ggplot2.*
 
 Je suis très favorablement impressionné par l'efficacité de STAN.
 
-Je me trouve finalement plutôt satisfait des résultats, malgré le nombre de données qui ne plaît guère Jacques, mais ce n'est pas moi le pourvoyeur de données...
+Je me trouve finalement plutôt satisfait des résultats, malgré le nombre de données trop réduit qui ne plaît guère Jacques, mais ce n'est pas moi le pourvoyeur de données...
 
-* on a pu procéder par calage et validation sur deux échantillons différents,
+* on a pu procéder par calage et validation sur deux échantillons différents, comme il se doit.
 
-* le CRPS de la prédictive bayesienne semble meilleur que celui de la prévision empirique naive, même si je partage les critiques de Jacques à l'égard de ce score propre symétrique.
+* le CRPS de la prédictive bayesienne semble meilleur que celui de la prévision empirique naive, même si je partage les critiques de Jacques à l'égard de ce score propre symétrique (cf projet de papier sur les idées fausses en previsions probabilistes d'ensemble).
 
 * Cette amélioration provient d'un gain en fiabilité, même si on perd en terme de résolution. 
 
