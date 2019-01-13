@@ -1,7 +1,7 @@
 ---
 title: "Essais  de la mise en oeuvre du Bayesian Forecasting System sur un modèle Bernoulli-Gamma échangeable d'ensemble de membres de pluies"
 author: "Eric Parent"
-date: "11 janvier partie 1 : Prévision binaire sur Vouglans"
+date: "13 janvier partie 1 : Prévision binaire sur Vouglans"
 fontsize: 9pt
 includes:
       in_header: stylepandoc.tex
@@ -366,6 +366,8 @@ dtout$probazeq1 <- ro*exp(dtout$LogProb1)/(ro*exp(dtout$LogProb1)+ (1-ro)*exp(dt
 dtout$probayeq1sachantzeq1<-(probazeg1sachantyeg1*dtout$margey)/ (probazeg1sachantyeg1*dtout$margey + probazeg1sachantyeg0*(1-dtout$margey))
 dtout$probayeq1sachantzeq0<-((1-probazeg1sachantyeg1)*dtout$margey)/ ((1-probazeg1sachantyeg1)*dtout$margey+ (1-probazeg1sachantyeg0)*(1-dtout$margey))
 dtout$predictyeg1<-dtout$probayeq1sachantzeq1*dtout$probazeq1 + dtout$probayeq1sachantzeq0*(1-dtout$probazeq1)
+## on sauve les resultats
+ save(fit0, fit1,dtout, file = "ResultatsComplets.RData")
 ```
 
 
@@ -380,7 +382,7 @@ plot(d$predictyeg1,d$NX/K, col=1+(d$Obs>=seuil),pch=19, xlab="Proportion de memb
 ```
 
 
-Sur l'échantillon de validation, le CRPS de la prédictive vaut `r mean((d$predictyeg1-(d$Obs>seuil))^2)` tandis que celui de la fréquence empirique des membres non nuls vaut `r mean((d$NX/K-(d$Obs>seuil))^2)` .
+Sur l'échantillon de validation, le score de Brier de la prédictive vaut `r mean((d$predictyeg1-(d$Obs>seuil))^2)` tandis que celui de la fréquence empirique des membres non nuls vaut `r mean((d$NX/K-(d$Obs>seuil))^2)` .
 
 En appellant le package **verification**, on peut visualiser la performance de la prédictive ainsi calculée (Figure 4):
   
@@ -399,7 +401,7 @@ verifNX<-verify(obs = 1*(d$Obs>seuil), pred=d$NX/K, obs.type = "binary",pred.typ
 plot(verifNX)
 ```
  
-En particulier la composante de fiabilité de son score vaut `r verif$bs.reliability` tandis qu'elle vaut `r verifNX$bs.reliability` pour l'estimateur naif. Mais on en paye le prix en terme de résolution :`r verif$bs.resolution` au lieu de `r verifNX$bs.resolution`
+En particulier la composante de fiabilité de son score vaut `r verif$bs.reliability` tandis qu'elle vaut `r verifNX$bs.reliability` pour l'estimateur naif. Mais on en paye le prix en terme de résolution :`r verif$bs.resol` au lieu de `r verifNX$bs.resol`
 
 # Conclusions
 
@@ -413,7 +415,7 @@ Si j'essaye de résumer opérationnellement les concepts de Krzysztofowicz, je d
 
 * produire la predictive \[[y\left| {X]} \right. = \int\limits_{\hat y}^{} {\left( {\frac{{[\hat y\left| {y][y]} \right.}}{{\left( {\int {[\hat y\left| {y][y]} \right.dy} } \right)}}} \right)}  \times [\hat y\left| {X]} \right.d\hat y\]
 
-Je suis également embêté par la façon brutale d'évaluer le $\rho$ du mélange de la loi de $(NX,SX,SLX)$ sans incertitude
+Je suis également embêté par la façon brutale d'évaluer le $\rho$ du mélange de la loi de $(NX,SX,SLX)$ sans considération pour l'incertitude.
 
 J'ai essayé de respecter les principes du *tidyverse* mais je ne progresse que très lentement en programmation R et je bredouille beaucoup avec *ggplot2.*
 
@@ -423,8 +425,12 @@ Je me trouve finalement plutôt satisfait des résultats, malgré le nombre de d
 
 * on a pu procéder par calage et validation sur deux échantillons différents, comme il se doit.
 
-* le CRPS de la prédictive bayesienne semble meilleur que celui de la prévision empirique naive, même si je partage les critiques de Jacques à l'égard de ce score propre symétrique (cf projet de papier sur les idées fausses en previsions probabilistes d'ensemble).
+* le score de Brier de la prédictive bayesienne semble meilleur que celui de la prévision empirique naive, même si je partage les critiques de Jacques à l'égard de ce score propre symétrique (cf projet de papier sur les idées fausses en previsions probabilistes d'ensemble).
 
 * Cette amélioration provient d'un gain en fiabilité, même si on perd en terme de résolution. 
 
 Reste maintenant à passer à la prévision de la quantité de pluie, ce qui fera l'objet d'une autre note. Le modèle des fuites échangeable est également à mettre en oeuvre.
+
+# Discussion
+
+J'ai recommencé l'étude sur toute la'année en posant saison $=1:365$. Le prédicteur naif passe alors devant avec un score de Brier de $0.149$ contre $0.156$ pour le bayésien, mais une composante de fiabilité plus mauvaise, de $0.02$ contre $0.00598$ pour le bayésien, néanmoins compensée par une résolution de $0.121$ contre $0.1$ pour le bayésien.
