@@ -1,7 +1,7 @@
 ---
 title: "Essais  de la mise en oeuvre du Bayesian Forecasting System sur un modèle Bernoulli-Gamma échangeable d'ensemble de membres de pluies"
 author: "Eric Parent"
-date: "13 janvier partie 1 : Prévision binaire sur Vouglans"
+date: "14 janvier partie 1 : Prévision binaire sur Vouglans"
 fontsize: 9pt
 includes:
       in_header: stylepandoc.tex
@@ -433,4 +433,10 @@ Reste maintenant à passer à la prévision de la quantité de pluie, ce qui fer
 
 # Discussion
 
-J'ai recommencé l'étude sur toute la'année en posant saison $=1:365$. Le prédicteur naif passe alors devant avec un score de Brier de $0.149$ contre $0.156$ pour le bayésien, mais une composante de fiabilité plus mauvaise, de $0.02$ contre $0.00598$ pour le bayésien, néanmoins compensée par une résolution de $0.121$ contre $0.1$ pour le bayésien.
+J'ai recommencé l'étude 
+
+* sur le printemps horizon = 3 jours. Le prédicteur naif reste alors encore derriere  avec un score de Brier de $0.165$ contre $0.136$ pour le bayésien, mais une composante de fiabilité plus mauvaise, de $0.0481$ contre $0.01$ pour le bayésien, et non compensée par une résolution de $0.113$ contre $0.124$ pour le bayésien.
+* sur l'été horizon = 3 jours. Le prédicteur naif passe devant avec un score de Brier de $0.157$ contre $0.167$ pour le bayésien, mais une composante de fiabilité plus mauvaise, de $0.0371$ contre $0.0132$ pour le bayésien, mais compensée par une résolution de $0.129$ contre $0.0941$ pour le bayésien.
+* sur l'été horizon = 4 jours, en posant saison $=printemps+90$. Le prédicteur naif passe alors devant avec un score de Brier de $0.166$ contre $0.167$ pour le bayésien, mais une composante de fiabilité plus mauvaise, de $0.0289$ contre $0.0156$ pour le bayésien, néanmoins compensée par une résolution de $0.112$ contre $0.972$ pour le bayésien.
+
+* sur toute l'année , horizon = 4 jours en posant saison $=1:365$. Le prédicteur naif passe alors devant avec un score de Brier de $0.149$ contre $0.156$ pour le bayésien, mais une composante de fiabilité plus mauvaise, de $0.02$ contre $0.00598$ pour le bayésien, néanmoins compensée par une résolution de $0.121$ contre $0.1$ pour le bayésien.
