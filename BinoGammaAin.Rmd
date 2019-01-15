@@ -136,6 +136,7 @@ datao %>%
   mutate_at(vars(matches("CEP")), take.log) %>% 
   mutate(SLX=rowSums(select(.,starts_with("CEP"))))   %>% 
   select(-starts_with("CEP")) %>% 
+  mutate(SX=ifelse(NX==0,0,SX ),SLX=ifelse(NX==0,0,SLX ) ) %>% 
   filter(Echeance==horizon) %>% 
   arrange(NX) %>% 
   filter(!is.na(NX),calendaire %in% saison)->dtout
