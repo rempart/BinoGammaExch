@@ -1,0 +1,479 @@
+--- 
+title: "Modèle Bernoulli-Gamma échangeable d'ensemble de membres de pluies"
+author: "Eric Parent"
+date: '25 Février 2022  : Essais STAN et JAGS'
+output:
+  pdf_document: default
+  html_document: default
+subtitle: Le modèle multidimensionnel Gamma
+---
+
+
+# Le modèle multidimensionnel Gamma
+Jacques a mis en évidence une très forte liaison entre les moyennes arithmétique (MX)
+logarithmique (MLX) des membres d'ensemble de pluies de Vouglans, peu compatible avec
+le premier modèle que nous proposions. Je reviens sur cette construction d'ensemble
+échangeable de pluies avec un nouveau modèle. La note BIDIGAMMA_NEW2 fournit une étude
+complète des propriétés d'un modèle multivarié gamma régulier. Pour rappel, la
+modélisation d'un couple bivarié gamma unitaire régulier (u,v) s'écrit:
+
+$$[u,v|r]=[u][v]\sum_{n=0}^\infty P_n(u)P_n(v)r^n$$ où les $P_n(u)$ sont les
+polynomes orthogonaux normés associés à la distribution $[u]$ tels que 
+$\int P_m(u)P_n(u)[u]du=\delta_{m=n}$. 
+Pour la loi gamma unitaire:
+$$[u]=\frac{e^{-u}u^{\alpha-1}}{\Gamma(\alpha)}$$ il faut que $r>0$, les
+$P_n(u)$ sont les polynomes cousins de ceux de Laguerre et La loi conjointe gamma régulière
+bivariée s'écrit grâce à la fonction de Bessel modiée de première espèce:
+
+$$[u,v|r,\alpha]=
+\frac{e^{-(u+v)/(1-r)}I_{\alpha-1}(\frac{2\sqrt{ruv}}{1-r})}{(1-r)r^{\frac{\alpha-1}{2}}\Gamma(\alpha)}$$
+
+La loi conditionnelle possède une structure conditionnelle liée à la loi des
+fuites qui rappelle de façon surprenante la construction conditionnelle d'un modèle normal bivarié:
+
+$$ V|u = F(u)+\epsilon \\ 
+\epsilon \sim \Gamma(\alpha,1-r)\\ 
+F(u) \sim fuite(\frac{r}{1-r}u,1-r) $$ 
+
+Les deux premiers moments conditionnels sont
+linéaires : 
+$$ \mathbb{E}(V|u) = ru+(1-r)\alpha\\
+\mathbb{V}(V|u) = 2r(1-r)u+(1-r)^2\alpha$$ 
+
+Le chunk suivant montre des résultats de simulation bivariée. On commence par construire une loi de génération de loi des fuites.
+
+```{r, simulation bidigamma} 
+rm(list=ls())
+library(tidyverse) 
+library(GGally) 
+library(MASS)
+set.seed(1234)
+rLeak<-function(n=1,mu=1,ro=1){ # genere une loi des fuites
+map_dbl(rpois(n,mu),.f = ~sum(rexp(.x,ro))) }
+
+#Génération d'un échantillon Gamma unitaire bivarié extension régulière avec faible corrélation 
+n<-100 
+r=0.7 
+mu=r/(1-r) 
+alpha=2.3 
+U=rgamma(n,shape = alpha,rate = 1 ) 
+V=(1-r)*(rLeak(n,mu*U,1)+rgamma(n,alpha,1))
+plot(U,V,type="p",pch=19) 
+lines(U,r*U+(1-r)*alpha,col="red")
+segments(x0=U,y0=r*U+(1-r)*alpha-2*sqrt(2*r*(1-r)*U+(1-r)*(1-r)*alpha),
+x1=U,y1=r*U+(1-r)*alpha+2*sqrt(2*r*(1-r)*U+(1-r)*(1-r)*alpha), col="blue")
+
+# Génération d'un échantillon Gamma unitaire bivarié extension régulière avec
+# forte corrélation 
+r=0.9 
+mu=r/(1-r) 
+U=rgamma(n,shape = alpha,rate = 1 )
+V=(1-r)*(rLeak(n,mu*U,1)+rgamma(n,alpha,1)) 
+plot(U,V,type="p",pch=19)
+lines(U,r*U+(1-r)*alpha,col="red")
+segments(x0=U,y0=r*U+(1-r)*alpha-2*sqrt(2*r*(1-r)*U+(1-r)*(1-r)*alpha),
+x1=U,y1=r*U+(1-r)*alpha+2*sqrt(2*r*(1-r)*U+(1-r)*(1-r)*alpha), col="blue") 
+```
+
+# Inférence d'un modèle gamma bivarié régulier
+
+## Jags , pas envie
+
+D'après moi, Jags n'est pas bien armé pour conduire l'inférence de la gamma bivariée:
+pour modéliser la loi des variables fuites  de la conditionnelle, il lui faut
+générer un nombre potentiellement grand de Poisson, qu'on peut certes tronquer
+numériquement. Mais il y a aussi ce qui se passe si ce tirage Poisson vaut zero,
+compliqué car Jags n'accepte pas de commande de type "IF THEN".Et puis comment
+lui dire de générer A=B+C à B connu dans le programme et C aléatoire?
+
+## STAN, un outil prometteur mais très délicat
+
+*Cmd_Stan*, la dernière version de
+[STAN](https://mc-stan.org/cmdstanr/articles/cmdstanr.html) permet l'emploi de
+la fonction *log_modified_bessel_first_kind* , quand l'ordre et l'argument de la
+bessel appartiennent aux réels (précedemment l'ordre de la bessel devait être un
+entier).  Du coup l'inférence par méthode Hamilton Monte Carlo encodée sous cette
+version de STAN est possible: en effet au coeur de HMC, on passe par le calcul de
+gradient de la LogPosterieure  pour faire des proposions MCMC qui visitent bien
+l'espace des inconnues. Par contre, on ne peut pas utiliser une variable de
+Poisson au niveau latent car STAN ne gèrent pas d'inconnues discrètes. Si tu
+l'implantes fait bien attention à respecter *scrupuleusement* toutes les étapes
+de la notice [CMD_STAN](https://mc-stan.org/cmdstanr/articles/cmdstanr.html), en
+particulier le package d'interface avec R, cmdstanr, n'est pas sur le CRAN et doit être chargé avec une commande d'installation spéciale.
+
+
+Retournons aux stats: à partir du pivot $U$  crée deux variables $Y_1,Y_2$  avec corrélation $r^2$:
+
+```{r,lancerCmdStan} 
+set.seed(1234)
+Y1=(1-r)*(rLeak(n,mu*U,1)+rgamma(n,alpha,1))
+Y2=(1-r)*(rLeak(n,mu*U,1)+rgamma(n,alpha,1)) 
+library(cmdstanr) 
+library(ggmcmc)
+``` 
+Nous écrivons le fichier texte *BinoGammaBigamma1.stan*
+
+``` 
+functions { // Function that returns the log pdf of BiGamma model with unit
+// scale parameter for the margins 
+real log_BiGamma_lp( real u, real v, real r,real alpha) { return(-lgamma(alpha)+0.5*(alpha-1)*(log(u)+log(v)-log(r))
+-log(1-r)-(u+v)/(1-r)+log_modified_bessel_first_kind( alpha-1,
+2*sqrt(r*u*v)/(1-r)) ); } } 
+data { 
+int<lower=0> T;         // number of observations 
+real X[T];    // first component 
+real Y[T];    // second component
+      } 
+parameters { 
+real<lower = 0,upper=1> r;   // BiGamma correlation 
+real<lower=1,upper = 4> alpha;      // shape coeff of gamma 
+           }
+model { 
+for (t in 1:T){ target += log_BiGamma_lp(X[t], Y[t], r, alpha); 
+               } 
+       } 
+```
+Ce fichier texte avec l'extension stan doit être sauvegardé dans le répertoire de travail de R,il contient la description du modèle en langage stan, proche du C++ et
+va être passé à R par le chunck suivant qui construit un noyau executable puis réalise l'échantillonnage HMC (2 chaînes par défaut)
+
+```{r CompilationEtInference, cache=TRUE}
+BiGammaEch <- cmdstan_model(stan_file = "BinoGammaBigamma1.stan") 
+fit<-BiGammaEch$sample(data = list(T = n, X =Y1, Y = Y2 )) 
+```
+Visualisation de l'inférence: on voit que l'on retrouve parfaitement les caractéristiques de nos données simulées.
+
+```{r}
+print(fit)
+library(bayesplot) #sortie sous forme  matricielle des tirages
+draws_dataframe <- fit$draws(format = "df") 
+head(draws_dataframe) #visualisation du posterior 
+mcmc_hist(fit$draws(c("r","alpha"))) 
+```
+
+Amélioration du codage info: on peut utiliser la vectorisation pour ré-écrire cette première inférence sans boucle et sans écrire sur disque le programme stan.
+
+```{r eval=FALSE, include=TRUE}
+model_string <- "
+functions {
+  // Function that returns the log pdf of BiGamma model with unit 
+  // scale parameter for the margins
+ real log_BiGamma_lp(  vector u, vector v, real r, real alpha) {
+ return(sum(-lgamma(alpha)+0.5*(alpha-1)*(log(u)+log(v)-log(r))
+ -log(1-r)-(u+v)/(1-r)+log_modified_bessel_first_kind( alpha-1, 2*sqrt(r*u.*v)/(1-r)) ));
+ }
+ }
+data {
+int<lower=0> T;         // number of observations 
+vector[T] X;    // first component 
+vector[T] Y;    // second component 
+}
+parameters {
+real<lower = 0,upper=1> r;   // BiGamma correlation
+real<lower=1, upper = 4> alpha;      // shape coeff of gamma
+}
+
+model {
+  
+target += log_BiGamma_lp(X, Y, r, alpha);
+
+}
+"
+```
+
+
+```{r , eval=FALSE, include=TRUE}
+BiGammaEchVect <- cmdstan_model(stan_file = write_stan_file(code= model_string , dir = tempdir(), basename = NULL)) 
+fitVect<-BiGammaEchVect$sample(data = list(T = n, X =Y1, Y = Y2 )) 
+print(fitVect)
+```
+
+# Construction d'un modèle gamma multivarié échangeable architecturé sur un pivot gamma latent. 
+$$ u_t
+\sim \Gamma(\alpha,1) \\ 
+V_{t,s}|u_t = F(u_t)+\epsilon_{t,s} 
+\\ \epsilon_{t,s} \sim \Gamma(\alpha,1-r)\\ 
+F(u_t) \sim fuite(\frac{r}{1-r}u_t,1-r) $$
+
+Voici un programme de simulation d'un tel modèle. On peut voir comment se dispersent différemment moyennes arithmétique et logarithmique selon les diverses valeur de $r$. Ce type de comportement semble assez adapté pour représenter les caractéristiques des membres de pluies de Vouglans. 
+
+```{r}
+njours=30*10
+nmembres=50
+alpha=2.3
+r=sqrt(0.8)
+mu=r/(1-r)
+U=rgamma(njours,shape = alpha,rate = 1 )
+V=matrix(NA,nc=nmembres,nr=njours)
+for(j in 1:nmembres){
+  V[,j]=(1-r)*(rLeak(njours,mu*U,1)+rgamma(njours,alpha,1)) 
+}
+MX=apply(V,1,mean)
+MLX=exp(apply(log(V),1,mean))
+plot(MX,MLX,typ="p",pch='.', cex=3, main=paste("Moyennes arithm et géom avec correlation ", r^2))
+abline(0,1)
+```
+
+```{r}
+njours=30*10
+nmembres=50
+alpha=2.3
+r=sqrt(0.1)
+mu=r/(1-r)
+U=rgamma(njours,shape = alpha,rate = 1 )
+V=matrix(NA,nc=nmembres,nr=njours)
+for(j in 1:nmembres){
+  V[,j]=(1-r)*(rLeak(njours,mu*U,1)+rgamma(njours,alpha,1)) 
+}
+MX=apply(V,1,mean)
+MLX=exp(apply(log(V),1,mean))
+plot(MX,MLX,typ="p",pch='.', cex=3, main=paste("Moyennes arithm et géom avec corrélation ", r^2))
+abline(0,1)
+```
+
+Effectuons l'inférence du modèle multigamma hiérarchique. L'écriture de la logconditionnelle est obtenant en soustrayant la log marginale à la log conjointe (cf la variable target, accumulateur de la logposterior).
+
+
+```{r multigam, cache=TRUE}
+model_string <- "
+functions {
+  // Function that returns the log pdf of BiGamma model with unit 
+  // scale parameter for the margins
+ real log_BiGamma_lp( vector u, vector v, real r, real alpha) {
+ return(sum(-lgamma(alpha)+0.5*(alpha-1)*(log(u)+log(v)-log(r))
+ -log(1-r)-(u+v)/(1-r)+log_modified_bessel_first_kind( alpha-1, 2*sqrt(r*u.*v)/(1-r)) ));
+ }
+ }
+data {
+int<lower=0> T;         // number of observations of the ensemble
+int<lower=0> K;         // number of members 
+matrix[T,K] MatX;    // data 
+}
+parameters {
+vector[T] U;    // latent variable 
+real<lower = 0,upper=1> r;   // BiGamma correlation
+real<lower=1.1, upper = 4> alpha;      // shape coeff of gamma
+}
+
+model {
+for(t in 1:T) U[t] ~ gamma(alpha,1);
+for(k in 1:K) {
+target += log_BiGamma_lp(to_vector(MatX[,k]), U, r, alpha) -(gamma_lpdf(U|alpha,1));
+            }
+}
+"
+BiGammaEchHierarch <- cmdstan_model(stan_file = write_stan_file(code= model_string , dir = tempdir(), basename = NULL)) 
+```
+On simule un jeu de données d'ensemble de pluies multigamma pour 30 jours, 50 membres.
+
+```{r stanHierarch, cache=TRUE}
+set.seed(1234)
+njours=30
+nmembres=50
+alpha=2.3
+r=sqrt(0.8)
+mu=r/(1-r)
+U=rgamma(njours,shape = alpha,rate = 1 )
+MatX=matrix(NA,nc=nmembres,nr=njours)
+for(j in 1:nmembres){
+  MatX[,j]=(1-r)*(rLeak(njours,mu*U,1)+rgamma(njours,alpha,1)) 
+}
+stan_data=list(T = njours,K=nmembres, MatX=MatX )
+alphahat=as.numeric(fitdistr(apply(MatX,1,mean),"gamma")$estimate[1])
+fitHierarch<-BiGammaEchHierarch$sample(data = stan_data,
+                                       seed = 123,
+  chains = 2,
+  refresh = 0,
+  init = list(
+    list(alpha = alphahat, U=apply(MatX,1,mean)), # chain 1
+    list(alpha = 0.9*alphahat, U=0.9*apply(MatX,1,mean))  # chain 2
+  )) 
+print(fitHierarch,max_rows=33)
+```
+Les visualisations suivantes montre qu'on retrouve très bien nos inconnues $r,\alpha$ et le vecteur pivot $U_t, t=1:T$
+
+
+```{r}
+draws_df <- fitHierarch$draws(format = "df")
+mcmc_hist(fitHierarch$draws("r"))
+mcmc_hist(fitHierarch$draws("alpha"))
+#boxplot(draws_df[,2:31])
+nomsordonnes<-paste0("U[",1:30,']')
+draws_df %>% dplyr::select((contains("U[")) ) %>% 
+  gather(key=key,value=value) %>%  
+   group_by(key) %>% 
+  summarise(q025= quantile(value, prob=0.025),
+            q25= quantile(value, prob=0.25),
+            q50=median(value),
+            q75= quantile(value, prob=0.75),
+            q975= quantile(value, prob=1-0.025)) %>% 
+  mutate(key=factor(key, nomsordonnes) ) %>% 
+#head()
+#dplyr::filter(grepl("U[",Parameter)) %>% 
+  ggplot(aes(x=key))+
+  geom_boxplot(aes(ymin=q025,lower=q25,middle=q50,
+                   upper=q75,ymax=q975),stat="identity")+
+  geom_point(data=data_frame(U=U, key=factor(nomsordonnes, nomsordonnes)), aes(x=key,y=U), col='red',size=3)+
+  theme(axis.text.x = element_text(angle = 60, hjust = 1))+
+labs(y="Posterieur de la latente",x="Jour du pivot")
+```
+## HMC diagnotic
+
+L'algorithme HMC fonctionne correctement, autant qu'on puisse en juger
+```{r}
+fitHierarch$cmdstan_summary()
+```
+
+On peut calculer un maximum de vraisemblance. 
+
+```{r}
+fit_optim <- BiGammaEchHierarch$optimize(data = stan_data, seed = 123,
+                                         init = list(
+    list(alpha = alphahat, U=apply(MatX,1,mean)))  # initilisation
+  )  
+fit_optim$draws()->w
+colnames(w)
+plot(U,w[2:31], pch=19)
+points(U,apply(MatX,1,mean),col='red')
+abline(0,1)
+fit_vb <-BiGammaEchHierarch$variational(data = stan_data, 
+                                 seed = 123,
+                                 init = list(
+    list(alpha = w[33], U=w[2:31], r=w[32])  
+  ) )
+```
+
+# Inférence variationelle 
+
+L'inférence variationnelle, par contre se plante lamentablement, dommage!
+
+```{r}
+fitHierarch$cmdstan_summary()
+fit_optim <- BiGammaEchHierarch$optimize(data = stan_data, seed = 123,
+                                         init = list(
+    list(alpha = alphahat, U=apply(MatX,1,mean)))  # chain 2
+  )  
+fit_optim$draws()->w
+colnames(w)
+fit_vb <-BiGammaEchHierarch$variational(data = stan_data, 
+                                 seed = 123,
+                                 init = list(
+    list(alpha = w[33], U=w[2:31], r=w[32])  
+  ) )
+
+```
+
+# Ecriture en JAGS
+
+On peut profiter de l'écriture conditionnelle sous forme de mélange Poissonnien de Gammas: 
+$${X_k|U }= \sum_{N=0}^\infty dPois(N_k,\frac{r}{1-r})\times dgamma(x_k, N_k+\alpha,\frac{1}{1-r})$$
+En voici le DAG:
+
+```{r image, echo = TRUE, message=FALSE, fig.align='center', fig.cap='DAG multigamma'}
+knitr::include_graphics("ConstructionHierarchiqueMultigamma.pdf")
+```
+
+
+
+
+```{r CalculsJags, cache = TRUE}
+
+modelstring= " 
+model{
+# priors
+r ~ dbeta(1,1)
+alpha ~ dunif(0.5,4)
+# Latents
+for(t in 1:T) { 
+              U[t] ~ dgamma(alpha,1)                        #latents
+              
+              for(k in 1:K){ N[t,k] ~ dpois(r*U[t]/(1-r))  #latents
+              
+                                      V[t,k] ~ dgamma(N[t,k]+alpha, 1/(1-r)) #Obs
+                          }
+              }
+
+
+}
+"
+
+library(rjags)
+data_for_JAGS <- list(T=njours,K=nmembres,V=MatX)
+burnin <- 5000
+n.iter <- 2*burnin
+n.adapt <-  1000
+n.chains <- 3
+param.inits = list(
+    list(alpha = alphahat, U=apply(MatX,1,mean)), # chain 1
+    list(alpha = 0.9*alphahat, U=0.9*apply(MatX,1,mean)),  # chain 2
+    list(alpha = alphahat, U=0.9*apply(MatX,1,mean))  # chain 3
+  )
+myJAGSmodel <- jags.model(file=textConnection(modelstring), 
+                         data=data_for_JAGS,
+                         inits=param.inits, 
+                         n.chains = n.chains,
+                         n.adapt = n.adapt)
+
+```
+
+
+```{r   MCMCJags, cache = TRUE}
+update(myJAGSmodel,burnin)
+```
+
+
+ 
+```{r   MCMCafterburnin , cache = TRUE}
+model.samples <- coda.samples(myJAGSmodel, 
+                   variable.names = c("alpha","r","U"),
+                   n.iter= n.iter ,
+                   thin = 1)
+gelman.diag(model.samples)
+summary(model.samples)
+```
+
+```{r}
+model.samples.gg <- ggs(model.samples)
+nomsordonnes<-paste0("U[",1:30,']')
+model.samples.gg %>%filter(grepl("U", Parameter)) %>% rename(key=Parameter) %>%  
+   group_by(key) %>% 
+  summarise(q025= quantile(value, prob=0.025),
+            q25= quantile(value, prob=0.25),
+            q50=median(value),
+            q75= quantile(value, prob=0.75),
+            q975= quantile(value, prob=1-0.025)) %>% 
+  mutate(key=factor(key, nomsordonnes) ) %>% 
+#head()
+#dplyr::filter(grepl("U[",Parameter)) %>% 
+  ggplot(aes(x=key))+
+  geom_boxplot(aes(ymin=q025,lower=q25,middle=q50,
+                   upper=q75,ymax=q975),stat="identity")+
+  geom_point(data=data_frame(U=U, key=factor(nomsordonnes, nomsordonnes)), aes(x=key,y=U), col='red',size=3)+
+  theme(axis.text.x = element_text(angle = 60, hjust = 1))+
+labs(y="Posterieur de la latente (avec Jags)",x="Jour du pivot")
+```
+
+```{r}
+model.samples.gg %>%filter(!grepl("U", Parameter)) %>% 
+   ggplot(aes(x=value, colour=Parameter))+
+  geom_density()+facet_wrap(~Parameter, scales="free")
+```
+# Question Gibbsienne pour Jacques
+
+Sur l'exemple précédent, HMC n'est guère rapide (3mn), malgré une initialisation généreuse. Aurait-t-on une expression explicite de la loi conditionnelle du pivot $U$ pour mettre en place un Gibbs des familles?
+De façon inattendue, Jags ne se défend pas maldu tout, et on pourrait également d'ailleurs programmer un Gibbs à la main. Il faut néanmoins à chaque fois se tringueballer la matrice des variables latentes Poisson associées à la loi des fuites et celà fait lourd. Y-aurait il un moyen de se passer de cette couche latente additionnelle?
+
+Dans un modèle multigamma échangeable,  sachant le pivot $U$, la loi conditionnelle des membres $\{V_s\}_{s=1:K}$ est donnée par $V_{s}|u = F(u)+\epsilon_{s}$ et elle est très facile à simuler. Mais dans l'autre sens, sachant les membres $\{V_s\}_{s=1:K}$, connait-on  la loi conditionnelle du pivot $U|\{V_s\}_{s=1:K}$?
+
+Les $X_k$ étant conditionnellement indépendants sachant le pivot $U$, je sais que $$\phi_{X_{k=1:K}|u}(\{s_k\}_{k=1:K})= \prod_{k=1}^K \phi_{X_k|u}(\{s_k\}\\
+\phi_{X_{k=1:K}|u}(\{s_k\}_{k=1:K})=\prod_{k=1}^K \frac{1}{(1-(1-r)is_k)^\alpha}\exp{u\times r\sum_{k=1}^K}\frac{is_k}{(1-is_k)^\alpha} $$
+D'où la fonction caractéristique de la loi conjointe conjointe par intégration complétée avec  $e^{is_0U}$ sur la densité gamma de $U$
+
+$$\phi_{U,X_{k=1:K}}(s_0,\{s_k\}_{k=1:K})= \prod_{k=1}^K \frac{1}{(1-(1-r)is_k)^\alpha}((1-is_0)-r\sum_{k=1}^K \frac{is_k}{(1-(1-r)is_k)})^{-\alpha} $$
+D'où la fonction caractéristique de l'extension gamma multivariée unitaire
+
+$$\phi_{X_{k=1:K}}(\{s_k\}_{k=1:K})= \prod_{k=1}^K \frac{1}{(1-(1-r)is_k)^\alpha}(1-r\sum_{k=1}^K \frac{is_k}{(1-(1-r)is_k)})^{-\alpha} $$
+
+Expression sur laquelle on voit bien le caractère *échangeable* de ce modèle multigamma d'ensemble!
+
+Maintenant, j'aimerai bien faire apparaître la loi de $U$ sachant les $X_{k=1:K}$.
+Est ce que tu connais une astuce à la Warren pour l'intuiter? J'essaie de m'appuyer sur le fait que dans la fonction caractéristique de $\phi_{U|X_{k=1:K}}$ doit apparaître une fonction symétrique des $X_{k=1:K}$, *sans succès* jusqu'à présent.HELP!
